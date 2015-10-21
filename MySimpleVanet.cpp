@@ -130,7 +130,10 @@ main(int argc, char *argv[])
   Ipv4AddressHelper ipv4;
   NS_LOG_INFO ("Assign IP Addresses.");
   ipv4.SetBase ("10.1.1.0", "255.255.255.0");
-  Ipv4InterfaceContainer i = ipv4.Assign (devices);
+  Ipv4InterfaceContainer ipic = ipv4.Assign (devices);
+
+
+  /*
 
   //Install echo server(s)
   ApplicationContainer serverApps;
@@ -147,6 +150,29 @@ main(int argc, char *argv[])
   {
   	UdpEchoClientHelper echoClient();
   }
+	*/
+
+  //Instantiate and install ping server(s)
+  ApplicationContainer serverApps;
+  V4PingHelper ping = V4PingHelper();
+  for(int i = 0; i < numNodes/2; i = i+2)
+  {
+  	ping.V4PingHelper(ipic.Get(i));
+  }
+
+  //Instantiate and install ping clients
+  NodeContainer pingSource;
+  for(int i = 1; i < numNodes/2; i=i+2)
+  {
+  	pingSource.Add(vanetNodes.Get(i));
+  }
+
+  Packet::EnablePrinting();
+
+  NS_LOG_INFO("Running simulation");
+  Simulator::Run();
+  Simulator::Destroy();
+  NS_LOG_INFO("Simulation finished");
 
 }
 
