@@ -31,7 +31,7 @@
 
 #include "MySimpleVanet.h"
 #include "ns3/core-module.h"
-
+#include "ns3/applications-module.h"
 
 
 using namespace ns3;
@@ -56,7 +56,7 @@ main(int argc, char *argv[])
 	//Define parameters and default values
 	uint32_t numNodes = 2;
 	uint32_t packetSize = 1000;
-	uint32_t numPackets = 1;
+	uint32_t numPackets = 10;
 	double interval = 1.0; //Seconds
 	bool verbose = false;
 	string phyMode("0fdmRate6MbpsBW10MHz");
@@ -65,6 +65,9 @@ main(int argc, char *argv[])
 	CommandLine cmd;
 	cmd.AddValue("numNodes", "Number of nodes in the simulation", numNodes);
 	cmd.AddValue("verbose", "Set verbose to print all logs to console", verbose);
+	cmd.AddValue("numPackets", "Number of packets to send", numPackets);
+
+
 
 	//Parse command line arguments
 	cmd.Parse(argc, argv);
@@ -128,6 +131,22 @@ main(int argc, char *argv[])
   NS_LOG_INFO ("Assign IP Addresses.");
   ipv4.SetBase ("10.1.1.0", "255.255.255.0");
   Ipv4InterfaceContainer i = ipv4.Assign (devices);
+
+  //Install echo server(s)
+  ApplicationContainer serverApps;
+  for(int i = 0; i < numNodes/2; i=i+2)
+  {
+  	UdpEchoServerHelper echoServer(90);
+  	serverApps = echoServer.Install(vanetNodes.Get(i));
+  	serverApps.Start(Seconds(1 + const_cast<double>(i)/10 ));
+  	serverApps.Stop(Seconds(10 + const_cast<double>(i)/10));
+  }
+
+  //Initialize echo clients
+  for(int i= 1; i < numNodes/2; i = i+2)
+  {
+  	UdpEchoClientHelper echoClient();
+  }
 
 }
 
