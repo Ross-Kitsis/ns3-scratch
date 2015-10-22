@@ -29,29 +29,48 @@
  * to "Outside the Context of a BSS")."
  */
 
-#include "MySimpleVanet.h"
 #include "ns3/core-module.h"
 #include "ns3/applications-module.h"
+#include "ns3/yans-wifi-helper.h"
+#include "ns3/wifi-module.h"
+#include "ns3/network-module.h"
+#include "ns3/applications-module.h"
+#include "ns3/config.h"
+#include "ns3/log.h"
+#include "ns3/command-line.h"
+#include "ns3/mobility-model.h"
+#include "ns3/yans-wifi-helper.h"
+#include "ns3/position-allocator.h"
+#include "ns3/mobility-helper.h"
+#include "ns3/internet-stack-helper.h"
+#include "ns3/ipv4-address-helper.h"
+#include "ns3/ipv4-interface-container.h"
 
+#include "ns3/ocb-wifi-mac.h"
+#include "ns3/wifi-80211p-helper.h"
+#include "ns3/wave-mac-helper.h"
+
+#include <iostream>
+
+#include "ns3/v4ping-helper.h"
+
+#include "ns3/rectangle.h"
+
+#include "ns3/aodv-module.h"
+#include "ns3/ipv4-list-routing-helper.h"
 
 using namespace ns3;
 
-MySimpleVanet::MySimpleVanet() {
-	// TODO Auto-generated constructor stub
-
-}
-
-MySimpleVanet::~MySimpleVanet() {
-	// TODO Auto-generated destructor stub
-}
-
-
 NS_LOG_COMPONENT_DEFINE ("MySimpleVanet");
+
+static void PingRtt(std::string context, Time rtt)
+{
+	std::cout << context << " " << rtt << std::endl;
+}
 
 int
 main(int argc, char *argv[])
 {
-	using namespace std;
 
 	//Define parameters and default values
 	uint32_t numNodes = 2;
@@ -59,15 +78,15 @@ main(int argc, char *argv[])
 	uint32_t numPackets = 10;
 	double interval = 1.0; //Seconds
 	bool verbose = false;
-	string phyMode("0fdmRate6MbpsBW10MHz");
+	std::string phyMode("OfdmRate6MbpsBW10MHz");
 
 	//Define command line arguments (May be expanded level)
 	CommandLine cmd;
 	cmd.AddValue("numNodes", "Number of nodes in the simulation", numNodes);
 	cmd.AddValue("verbose", "Set verbose to print all logs to console", verbose);
 	cmd.AddValue("numPackets", "Number of packets to send", numPackets);
-
-
+	cmd.AddValue("packetSize", "Size of packet to send", packetSize);
+	cmd.AddValue("interval", "Interval between packets", interval);
 
 	//Parse command line arguments
 	cmd.Parse(argc, argv);
@@ -105,26 +124,33 @@ main(int argc, char *argv[])
 	//Enable tracing on all devices
 	wifiPhy.EnablePcap ("wave-simple-80211p", devices);
 
+
+
 	//Mobility helpers
   MobilityHelper mobility;
 
   mobility.SetPositionAllocator ("ns3::GridPositionAllocator",
-                                   "MinX", DoubleValue (0.0),
-                                   "MinY", DoubleValue (0.0),
-                                   "DeltaX", DoubleValue (5.0),
-                                   "DeltaY", DoubleValue (10.0),
-                                   "GridWidth", UintegerValue (3),
-                                   "LayoutType", StringValue ("RowFirst"));
+                                 "MinX", DoubleValue (0.0),
+                                 "MinY", DoubleValue (0.0),
+                                 "DeltaX", DoubleValue (5.0),
+                                 "DeltaY", DoubleValue (10.0),
+                                 "GridWidth", UintegerValue (3),
+                                 "LayoutType", StringValue ("RowFirst"));
 
   mobility.SetMobilityModel ("ns3::RandomWalk2dMobilityModel",
-                               "Bounds", RectangleValue (Rectangle (-50, 50, -50, 50)));
-
+                             "Bounds", RectangleValue (Rectangle (-50, 50, -50, 50)));
   mobility.Install (vanetNodes);
 
   //Network layer
   InternetStackHelper INetStack;
-  INetStack.Install(vanetNodes);
 
+  AodvHelper aodv;
+  Ipv4ListRoutingHelper list;
+
+  list.Add(aodv,100);
+
+  INetStack.SetRoutingHelper(list);
+  INetStack.Install(vanetNodes);
 
   //IP Address helpers
   Ipv4AddressHelper ipv4;
@@ -132,44 +158,77 @@ main(int argc, char *argv[])
   ipv4.SetBase ("10.1.1.0", "255.255.255.0");
   Ipv4InterfaceContainer ipic = ipv4.Assign (devices);
 
-
   /*
-
   //Install echo server(s)
   ApplicationContainer serverApps;
-  for(int i = 0; i < numNodes/2; i=i+2)
+  for(uint32_t i = 0; i < numNodes/2; i=i+2)
   {
   	UdpEchoServerHelper echoServer(90);
   	serverApps = echoServer.Install(vanetNodes.Get(i));
-  	serverApps.Start(Seconds(1 + const_cast<double>(i)/10 ));
-  	serverApps.Stop(Seconds(10 + const_cast<double>(i)/10));
+  	serverApps.Start(Seconds(1 + ((double)(i))/10 ));
+  	serverApps.Stop(Seconds(10 + ((double)(i))/10));
   }
 
   //Initialize echo clients
-  for(int i= 1; i < numNodes/2; i = i+2)
+  for(uint32_t i= 1; i < numNodes/2; i = i+2)
   {
   	UdpEchoClientHelper echoClient();
   }
 	*/
 
+
+  /*
+
   //Instantiate and install ping server(s)
   ApplicationContainer serverApps;
-  V4PingHelper ping = V4PingHelper();
-  for(int i = 0; i < numNodes/2; i = i+2)
+  V4PingHelper ping = V4PingHelper()
+  for(uint32_t i = 0; i < numNodes/2; i = i+2)
   {
   	ping.V4PingHelper(ipic.Get(i));
   }
 
   //Instantiate and install ping clients
   NodeContainer pingSource;
-  for(int i = 1; i < numNodes/2; i=i+2)
+  for(uint32_t i = 1; i < numNodes/2; i=i+2)
+  {
+  	pingSource.Add(vanetNodes.Get(i));
+  }
+  serverApps = ping.Install(pingSource);
+  serverApps.Start(Seconds(2.0));
+  serverApps.Start(Seconds(10.0));
+
+	*/
+
+  /*
+
+  ApplicationContainer serverApps;
+  NodeContainer pingSource;
+
+  V4PingHelper ping = V4PingHelper(ipic.GetAddress(0));
+
+
+
+
+  for(uint32_t i = 1; i < numNodes; i++)
   {
   	pingSource.Add(vanetNodes.Get(i));
   }
 
-  Packet::EnablePrinting();
+  serverApps = ping.Install(pingSource);
+  serverApps.Stop(Seconds(10.0));
+  serverApps.Start(Seconds (2.0));
+
+	*/
+
+
+  //Print ping rtt
+  Config::Connect("/NodeList/*/ApplicationList/*/$ns3::V4Ping/Rtt",
+  		MakeCallback(&PingRtt));
+
+ // Packet::EnablePrinting();
 
   NS_LOG_INFO("Running simulation");
+  Simulator::Stop();
   Simulator::Run();
   Simulator::Destroy();
   NS_LOG_INFO("Simulation finished");
